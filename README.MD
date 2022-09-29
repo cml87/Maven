@@ -183,3 +183,38 @@ $ mvn groupId:artifactId:goal -P -profile-1,-profile-2,-?profile-3
 ```
 This can be used to deactivate profiles marked as activeByDefault or profiles that would otherwise be activated through their activation config in the pom or settings.xml` I think.
 
+## Pom configuration in profiles
+Depending on where you choose to configure your profile, you will have access to varying POM configuration options.
+
+### Profiles in external files
+Profiles specified in external files (i.e in `settings.xml` or `profiles.xml`) are not portable in the strictest sense. Anything that seems to stand a high chance of changing the result of the build is restricted to the inline profiles in the POM. Thus in profiles in the mentioned files will only be able to modify the <repositories> and <pluginRepositories> sections, plus an extra <properties> section.
+
+The <properties> section allows you to specify free-form key-value pairs which will be included in the interpolation process for the POM, as we say above. This allows us to specify a plugin configuration in the form of `${profile.provided.path}` (is this the value of the property in the active profile ?)
+
+### Profiles in POMs
+Profiles specified in the POM can modify the following POM elements:
+```xml
+<repositories>
+<pluginRepositories>
+<dependencies>
+<plugins>
+<properties> (not actually available in the main POM, but used behind the scenes)
+<modules>
+<reports>
+<reporting>
+<dependencyManagement>
+<distributionManagement>
+```
+as well as a subset of the `<build>` element:
+```xml
+<defaultGoal>
+<resources>
+<testResources>
+<directory>
+<finalName>
+<filters>
+<pluginManagement>
+<plugins>
+```
+Thus profiles specified inside the POM have many more options. The trade-off, of course, is that we'll be able to modify only that project and its sub-modules by editing the profile in the pom. Since these profiles are specified inline, and therefore have a better chance of preserving portability, it's reasonable to say we can add more information to them without the risk of that information being unavailable to other users.
+
