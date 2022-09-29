@@ -15,7 +15,7 @@ A profile can be activated in several ways:
 ### From the command line
 Profiles can be explicitly specified using the `-P` command line flag.
 
-This flag is followed by a comma-delimited list of profile IDs to use. The profile(s) specified in the option are activated in addition to any profiles which are activated by their activation configuration in the pom, or the <activeProfiles> section in the `settings.xml`. Thus we may have several profiles activated at once!
+This flag is followed by a comma-delimited list of profile IDs to use. The profile(s) specified in the option are activated in addition to any profiles which are activated by their activation configuration in the pom or settings.xml (`<activation></activation>`), or the <activeProfiles> section in the `settings.xml`. Thus we may have several profiles activated at once!
 
 From Maven 4 onward, Maven will refuse to activate or deactivate a profile that cannot be resolved. To prevent this, prefix the profile identifier with an ?, marking it as optional:
 ```shell
@@ -46,7 +46,9 @@ Profiles can also be active by default using a configuration like the following 
   </profile>
 </profiles>
 ```
-This profile will automatically be active for all builds unless another profile in the same POM is activated via `-P` flag in the command line, or through some activation configuration as we'll see below. In fact, all profiles that are active by default are automatically deactivated when a profile in the POM is activated on the command line with `-P` or through its activation config.
+This profile will automatically be active for all builds unless another profile in the same POM is activated via `-P` flag in the command line, or through some activation configuration as we'll see below. In fact, all profiles that are active by default are automatically deactivated when a profile in the POM is activated on the command line with `-P` or through its activation config. Active profiles in the settings.xml instead keep active I think.
+
+Thus, we have two options to activate one or more profiles purposely: either through the `-P` command line flag, or through some activation configuration in the profile itself, which may be in the pom or the settings.xml.
 
 ### Based on environment variables and activation setting
 The profile below will be activated when the system property "debug" is specified with any value (via `-D` flag):
@@ -112,9 +114,7 @@ To activate this we would type this on the command line:
 ```shell
 $ mvn groupId:artifactId:goal -Denvironment=test
 ```
-As of Maven 3.0, profiles in the POM can also be activated based on properties from active profiles from the `settings.xml`.
-
-Environment variables like `FOO` are available as properties of the form `env.FOO`. Furthermore  environment variable names are normalized to all upper-case on Windows.
+As of Maven 3.0, profiles in the POM can also be activated based on properties from active profiles from the `settings.xml`. Moreover, environment variables like `FOO` are available as properties of the form `env.FOO`. On Windows, environment variable names are normalized to all upper-case.
 
 ### Present or missing files
 This example will trigger the profile when the generated file `target/generated-sources/axistools/wsdl2java/org/apache/maven` is missing:
@@ -130,7 +130,8 @@ This example will trigger the profile when the generated file `target/generated-
   </profile>
 </profiles>
 ```
-As of Maven 2.0.9, the tags `<exists>` and `<missing>` could be interpolated. Supported variables are system properties like `${user.home}` and environment variables like `${env.HOME}`. However, properties and values defined in the POM itself are not available for interpolation here, e.g. the above example activator cannot use `${project.build.directory}` but needs to hard-code the path target.
+As of Maven 2.0.9, the tags `<exists>` and `<missing>` could be interpolated. Supported variables are system properties like `${user.home}` and environment variables like `${env.HOME}`. However, properties and values defined in the POM itself are not available for interpolation here, e.g. the above example activator cannot use `${project.build.directory}` but needs to hard-code the path target. In other words, we can define properties in a `<property></property>` block of a pom profile and use them for interpolation outside the profile, in the same pom. But properties defined outside the profile cannot be used for interpolation inside profiles, in a given pom. Inside the pom profile, however, environment variables or settings.xml properties can be interpolated, as we saw above, I think.
+
 
 ### OS settings and activation setting
 Profiles can be automatically triggered based on the detected state of the build environment. These triggers are specified via an <activation> section in the profile itself. Currently, this detection is limited to prefix-matching of the JDK version, the presence of a system property or the value of a system property. Here are some examples:
@@ -198,7 +199,7 @@ Profiles specified in the POM can modify the following POM elements:
 <pluginRepositories>
 <dependencies>
 <plugins>
-<properties> (not actually available in the main POM, but used behind the scenes)
+<properties> (not actually available in the main POM, but used behind the scenes ?)
 <modules>
 <reports>
 <reporting>
@@ -217,4 +218,168 @@ as well as a subset of the `<build>` element:
 <plugins>
 ```
 Thus profiles specified inside the POM have many more options. The trade-off, of course, is that we'll be able to modify only that project and its sub-modules by editing the profile in the pom. Since these profiles are specified inline, and therefore have a better chance of preserving portability, it's reasonable to say we can add more information to them without the risk of that information being unavailable to other users.
+
+Profiles can include a `<property>` block that apply one or other properties values in the pom where they are, depending on the active, or activated one:
+```xml
+<project>
+  ...
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.myco.plugins</groupId>
+        <artifactId>spiffy-integrationTest-plugin</artifactId>
+        <version>1.0</version>
+        <configuration>
+          <appserverHome>${appserver.home}</appserverHome>
+        </configuration>
+      </plugin>
+      ...
+    </plugins>
+  </build>
+  ...
+</project>
+
+<project>
+  ...
+  <profiles>
+    <profile>
+      <id>appserverConfig-dev</id>
+      <activation>
+        <property>
+          <name>env</name>
+          <value>dev</value>
+        </property>
+      </activation>
+      <properties>
+        <appserver.home>/path/to/dev/appserver</appserver.home>
+      </properties>
+    </profile>
+ 
+    <profile>
+      <id>appserverConfig-dev-2</id>
+      <activation>
+        <property>
+          <name>env</name>
+          <value>dev-2</value>
+        </property>
+      </activation>
+      <properties>
+        <appserver.home>/path/to/another/dev/appserver2</appserver.home>
+      </properties>
+    </profile>
+  </profiles>
+  ..
+</project>
+```
+Here executing:
+```shell
+$ mvn -Denv=dev-2 integration-test
+```
+will result in a successful build, applying the properties given by profile named `appserverConfig-dev-2`. And when we execute:
+```shell
+$ mvn -Denv=dev integration-test
+```
+it will result in a successful build applying the properties given by the profile named `appserverConfig-dev`. However, executing:
+```shell
+$ mvn -Denv=production integration-test
+```
+will not do a successful build. The reason is no profile will get activated when variable `dev` has value `production` leaving the needed property to configure a plugin `appserver.home` undefined.
+
+
+## POM elements outside `<profiles>`
+Some POM elements cannot be modified outside profiles bla bla bla. 
+External files such as `settings.xml` and `profiles.xml` also does not support elements outside the POM-profiles bla bla bla (see the documentation).
+
+One of the goals in Maven 2 is to consolidate all the information needed to run a build into a single file, or file hierarchy, which is the POM. Thus it is recommended to define profiles in the POM instead of in settings.xml, which normally is not distributed or versioned.
+
+## Profile Order
+All profile elements in a POM from active profiles overwrite the global elements with the same name of the POM which are not inside any profile, or extend those in case of collections. In case multiple profiles are active in the same POM or external file, the ones which are <u>defined</u> later take precedence over the ones defined earlier (independent of their profile id and activation order).
+The example below shows two profiles activated by default, that add more values to a collection property `<repository>` which also gets a value globally, outside any profile:
+```xml
+<project>
+  ...
+  <repositories>
+    <repository>
+      <id>global-repo</id>
+      ...
+    </repository>
+  </repositories>
+  ...
+  <profiles>
+    <profile>
+      <id>profile-1</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <repositories>
+        <repository>
+          <id>profile-1-repo</id>
+          ...
+        </repository>
+      </repositories>
+    </profile>
+    <profile>
+      <id>profile-2</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <repositories>
+        <repository>
+          <id>profile-2-repo</id>
+          ...
+        </repository>
+      </repositories>
+    </profile>
+    ...
+  </profiles>
+  ...
+</project>
+```
+This leads to the repository list: `profile-2-repo, profile-1-repo, global-repo`.
+
+## Project portability and profiles
+Attention must be paid to properties defined in not pom, but settings.xml profiles. Such properties can be resolved in a project's pom, only if the user compiling that maven project is using the specific settings.xml file with that profile and property definition. Since often the settings.xml file is user specific and is not distributed, in contrast to the pom file, this approach is much likely to break project portability:
+```xml
+<!-- pom file -->
+<project>
+  ...
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.myco.plugins</groupId>
+        <artifactId>spiffy-integrationTest-plugin</artifactId>
+        <version>1.0</version>
+        <configuration>
+          <appserverHome>${appserver.home}</appserverHome>
+        </configuration>
+      </plugin>
+      ...
+    </plugins>
+  </build>
+  ...
+</project>
+```
+```xml
+<!-- setting.xml file -->
+<settings>
+  ...
+  <profiles>
+    <profile>
+      <id>appserverConfig</id>
+      <properties>
+        <appserver.home>/path/to/appserver</appserver.home>
+      </properties>
+    </profile>
+  </profiles>
+ 
+  <activeProfiles>
+    <activeProfile>appserverConfig</activeProfile>
+  </activeProfiles>
+  ...
+</settings>
+```
+To solve this issue we should inline the profile in the project's pom.
+In this case, since the culprit property is used to define the version of a plugin, the issue could also be solved by using a `<pluginManagement>` section in a distributed parent pom.
+
+Another common issue when defining profiles is not defining all the profiles that are "natural" for the project. For example, dev, test, prod and qa. See the example above where we did `mvn -Denv=production integration-test`.
 
