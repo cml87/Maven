@@ -2,7 +2,12 @@
 
 
 ## Maven profiles
- Profiles are specified using a subset of the elements available in the POM itself (plus one extra section), and are triggered in any of a variety of ways. They modify the POM at build time, and are meant to be used in complementary sets to give equivalent-but-different parameters for a set of target environments (providing, for example, the path of the appserver root in the development, testing, and production environments). As such, profiles can easily lead to differing build results from different members of your team. However, used properly, profiles can be used while still preserving project portability.
+ Profiles are specified using a subset of the elements available in the POM itself (plus one extra section), and are triggered in any of a variety of ways. They modify the POM at build time, and are meant to be used in complementary sets to give equivalent-but-different parameters for a set of target environments (providing, for example, the path of the appserver root in the development, testing, and production environments). As such, profiles can easily lead to differing build results from different members of your team. However, used properly, profiles can be used while still preserving project portability. 
+
+ Each profile will have an id which should hint to their intended use. One good way to do this is to use the common system property trigger as part of the name for the profile. This might result in names like `env-dev`, `env-test`, and `env-prod` for profiles that are triggered by the system property `env` (see below):
+ ```shell
+ $ mvn -Denv=test <phase>
+ ```
 
 There are four types of maven profile
 - Per Project: defined in the POM itself (`pom.xml`).
@@ -32,7 +37,7 @@ Profiles can be activated in the Maven settings, settings.xml file, via the `<ac
   ...
 </settings>
 ```
-Profiles listed in the <activeProfiles> tag would be activated by default every time a project use it.
+Profiles listed in the <activeProfiles> tag would be activated by default every time a project uses it.
 
 Profiles can also be active by default using a configuration like the following in the pom:
 ```xml
@@ -46,7 +51,7 @@ Profiles can also be active by default using a configuration like the following 
   </profile>
 </profiles>
 ```
-This profile will automatically be active for all builds unless another profile in the same POM is activated via `-P` flag in the command line, or through some activation configuration as we'll see below. In fact, all profiles that are active by default are automatically deactivated when a profile in the POM is activated on the command line with `-P` or through its activation config. Active profiles in the settings.xml instead keep active I think.
+This profile will automatically be active for all builds unless another profile in the same POM is activated via `-P` flag in the command line, or through some activation configuration as we'll see below. In fact, all profiles that are active by default in the pom (not in the settings.xml) are automatically deactivated when a profile in the POM is activated on the command line with `-P` or through its activation config. Active profiles by default in the settings.xml instead stay active in this case.
 
 Thus, we have two options to activate one or more profiles purposely: either through the `-P` command line flag, or through some activation configuration in the profile itself, which may be in the pom or the settings.xml.
 
@@ -383,3 +388,37 @@ In this case, since the culprit property is used to define the version of a plug
 
 Another common issue when defining profiles is not defining all the profiles that are "natural" for the project. For example, dev, test, prod and qa. See the example above where we did `mvn -Denv=production integration-test`.
 
+## Determining the active profile
+Determining active profiles helps the user to know what particular profiles has been executed during a build. We can use the Maven Help Plugin to tell what profiles are in effect during a build. For example if we have defined in our pom a profile that gets activated when system property `env` has value `dev` and we do
+```shell
+$ mvn help:active-profiles -Denv=dev
+```
+we'll get:
+```shell
+The following profiles are active:
+
+ - appserverConfig-dev (source: pom)
+```
+If instead we have a profile active by default in our settings.xml and we run the previous command without passing any `-D` option, we'll get something like:
+```shell
+The following profiles are active:
+
+ - appserverConfig (source: settings.xml)
+```
+
+If we have both things, ie. an active profile from the settings.xml and an activated one from the pom passing option `-P`, both will be activated simultaneously:
+```shell
+$ mvn help:active-profiles -P appserverConfig-dev
+The following profiles are active:
+
+ - appserverConfig-dev (source: pom)
+ - appserverConfig (source: settings.xml)
+```
+
+Even though here we get listed the two active profiles, we are not sure which one of them has been applied. To see the effect on the build execute:
+```shell
+$  mvn help:effective-pom -P appserverConfig-dev
+```
+This will print the effective POM for this build configuration out to the console. Profiles in the settings.xml have higher priority than profiles in the POM. So the profile that has been applied here is appserverConfig not appserverConfig-dev (I think the author mean the profile whose properties values will override those of the other).
+
+We can redirect the output from the `effective-pom` plugin to a file with flag `-Doutput=effective-pom.xml`.
