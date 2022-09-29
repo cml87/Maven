@@ -2,9 +2,9 @@
 
 
 ## Maven profiles
- Profiles are specified using a subset of the elements available in the POM itself (plus one extra section), and are triggered in any of a variety of ways. They modify the POM at build time, and are meant to be used in complementary sets to give equivalent-but-different parameters for a set of target environments (providing, for example, the path of the appserver root in the development, testing, and production environments). As such, profiles can easily lead to differing build results from different members of your team. However, used properly, profiles can be used while still preserving project portability. 
+Profiles are specified using a subset of the elements available in the POM itself (plus one extra section), and are triggered in any of a variety of ways. They modify the POM at build time, and are meant to be used in complementary sets to give equivalent-but-different parameters for a set of target environments (providing, for example, the path of the appserver root in the development, testing, and production environments). As such, profiles can easily lead to differing build results from different members of your team. However, used properly, profiles can be used while still preserving project portability. 
 
- Each profile will have an id which should hint to their intended use. One good way to do this is to use the common system property trigger as part of the name for the profile. This might result in names like `env-dev`, `env-test`, and `env-prod` for profiles that are triggered by the system property `env` (see below):
+Each profile will have an id which should hint to their intended use. One good way to do this is to use the common system property trigger as part of the name for the profile. This might result in names like `env-dev`, `env-test`, and `env-prod` for profiles that are triggered by the system property `env` (see below):
  ```shell
  $ mvn -Denv=test <phase>
  ```
@@ -422,3 +422,22 @@ $  mvn help:effective-pom -P appserverConfig-dev
 This will print the effective POM for this build configuration out to the console. Profiles in the settings.xml have higher priority than profiles in the POM. So the profile that has been applied here is appserverConfig not appserverConfig-dev (I think the author mean the profile whose properties values will override those of the other).
 
 We can redirect the output from the `effective-pom` plugin to a file with flag `-Doutput=effective-pom.xml`.
+
+
+## Profiles inheritance
+http://www.dashbay.com/2011/03/maven-profile-inheritance/
+
+Profiles aren't inherited. Profiles in parent poms can be triggered by the building of a child. When activated, they are applied directly to the parent pom, prior to that parent being used for inheritance into the child. So the effects of an active profile in a parent pom may be felt by the child.
+
+Imagine we have a parent pom with a "prod" profile whose job is to insert some properties into the build. On a production system, Maven will activate that profile and the parent pom will contain the properties. Since properties are inherited from parents, your child pom will get them. The end effect is just like the profile was inherited, but in fact the profile was NOT inherited. Up to here its clear to me.
+
+Things that are inherited in maven are http://www.dashbay.com/2011/03/maven-profile-inheritance/
+
+?
+On the other hand, say your parent pom has a "prod" profile that adds a module for publishing your app to a webserver. On your production system, Maven will activate that profile and the parent pom will contain the module.  However, that module will try to publish the parent to the webserver, not your child project.
+
+If you simply insist on trying to “inherit” plugins via a profile, you’d have to:
+
+Set up the profile in the parent pom, but instead of defining the module in a <plugin> section, define it in a <pluginManagement> section.  The pluginManagement is explicitly for declaring plugins that aren’t used in the parent but need to be propagated to the child.
+Set up the profile again in the child pom (yes, copy and paste).  Within the profile, REdeclare the plugin  (in a <plugin> section not <pluginManagement>), but without all the configuration.  This will activate the plugin defined in the parent.
+Yes, it sucks that you have to double-declare things.   I try to find other solutions if at all possible.
